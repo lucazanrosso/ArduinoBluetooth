@@ -78,7 +78,6 @@ package com.lucazanrosso.arduinobluetooth;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Method;
 import java.util.UUID;
 
 import android.app.Activity;
@@ -86,10 +85,10 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.os.SystemClock;
 import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -98,16 +97,17 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 public class MainActivity extends Activity {
-    private static final String TAG = "bluetooth2";
+
+    public final String TAG = "SI";
+    public final int MESSAGE_READ = 1;
+    public final int MESSAGE_WRITE = 2;
 
     Button btnOn, btnOff;
-    TextView txtArduino;
-    Handler h;
+    TextView textView;
+    Handler mHandler;
 
-    final int RECIEVE_MESSAGE = 1;        // Status  for Handler
     private BluetoothAdapter btAdapter = null;
     private BluetoothSocket btSocket = null;
-    private StringBuilder sb = new StringBuilder();
 
     private ConnectedThread mConnectedThread;
 
@@ -126,27 +126,23 @@ public class MainActivity extends Activity {
 
         btnOn = (Button) findViewById(R.id.button_on);                  // button LED ON
         btnOff = (Button) findViewById(R.id.button_off);                // button LED OFF
-        txtArduino = (TextView) findViewById(R.id.text);      // for display the received data from the Arduino
+        textView = (TextView) findViewById(R.id.text);      // for display the received data from the Arduino
 
-        h = new Handler() {
+        mHandler = new Handler() {
             public void handleMessage(android.os.Message msg) {
                 switch (msg.what) {
-                    case RECIEVE_MESSAGE:                                                   // if receive massage
+                    case MESSAGE_READ:
                         byte[] readBuf = (byte[]) msg.obj;
-                        String strIncom = new String(readBuf, 0, msg.arg1);                 // create string from bytes array
-                        sb.append(strIncom);                                                // append string
-                        int endOfLineIndex = sb.indexOf("\r\n");                            // determine the end-of-line
-                        if (endOfLineIndex > 0) {                                            // if end-of-line,
-                            String sbprint = sb.substring(0, endOfLineIndex);               // extract string
-                            sb.delete(0, sb.length());                                      // and clear
-                            txtArduino.setText("Data from Arduino: " + sbprint);            // update TextView
-                            btnOff.setEnabled(true);
-                            btnOn.setEnabled(true);
-                        }
-                        Log.d(TAG, "...String:"+ sb.toString() +  "Byte:" + msg.arg1 + "...");
-                        Toast.makeText(getApplicationContext(), strIncom, Toast.LENGTH_SHORT).show();
+                        String readString = new String(readBuf, 0, msg.arg1);
+                        Toast.makeText(getApplicationContext(), readString, Toast.LENGTH_SHORT).show();
+                        textView.setText(readString);
                         break;
-
+//                    case MESSAGE_WRITE:
+//                        byte[] writeBuf = (byte[]) msg.obj;
+//                        String writeString = new String(writeBuf);
+//                        Toast.makeText(getApplicationContext(), writeString, Toast.LENGTH_SHORT).show();
+//                        textView.setText(writeString);
+//                        break;
                 }
             }
         };
@@ -165,7 +161,7 @@ public class MainActivity extends Activity {
         btnOff.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
 //                btnOff.setEnabled(false);
-                mConnectedThread.write("0");    // Send "0" via Bluetooth
+                mConnectedThread.write("011");    // Send "0" via Bluetooth
                 //Toast.makeText(getBaseContext(), "Turn off LED", Toast.LENGTH_SHORT).show();
             }
         });
@@ -262,41 +258,32 @@ public class MainActivity extends Activity {
     }
 
     private class ConnectedThread extends Thread {
+        private final BluetoothSocket mmSocket;
         private final InputStream mmInStream;
         private final OutputStream mmOutStream;
+        private byte[] mmBuffer; // mmBuffer store for the stream
 
         public ConnectedThread(BluetoothSocket socket) {
+            mmSocket = socket;
             InputStream tmpIn = null;
             OutputStream tmpOut = null;
 
-            // Get the input and output streams, using temp objects because
-            // member streams are final
+            // Get the input and output streams; using temp objects because
+            // member streams are final.
             try {
                 tmpIn = socket.getInputStream();
+            } catch (IOException e) {
+                Log.e(TAG, "Error occurred when creating input stream", e);
+            }
+            try {
                 tmpOut = socket.getOutputStream();
-            } catch (IOException e) { }
+            } catch (IOException e) {
+                Log.e(TAG, "Error occurred when creating output stream", e);
+            }
 
             mmInStream = tmpIn;
             mmOutStream = tmpOut;
         }
-
-//        public void run() {
-//            byte[] buffer = new byte[256];  // buffer store for the stream
-//            int bytes; // bytes returned from read()
-//
-//            // Keep listening to the InputStream until an exception occurs
-//            while (true) {
-//                try {
-//                    // Read from the InputStream
-//                    bytes = mmInStream.read(buffer);        // Get number of bytes and message in "buffer"
-//                    int c = bytes;
-//                    Log.d(TAG, ":" + c);
-//                    h.obtainMessage(RECIEVE_MESSAGE, bytes, -1, buffer).sendToTarget();     // Send to message queue Handler
-//                } catch (IOException e) {
-//                    break;
-//                }
-//            }
-//        }
 
         public void run() {
             byte[] mmBuffer = new byte[1024];
@@ -305,14 +292,13 @@ public class MainActivity extends Activity {
             // Keep listening to the InputStream until an exception occurs.
             while (true) {
                 try {
-                    // Read from the InputStream.
-                    numBytes = mmInStream.read(mmBuffer);
-                    // Send the obtained bytes to the UI activity.
-                    Log.d(TAG, ":" + numBytes);
-                    Message readMsg = h.obtainMessage(
-                            RECIEVE_MESSAGE, numBytes, -1,
-                            mmBuffer);
-                    readMsg.sendToTarget();
+                    if (mmInStream.available() > 0) {
+                        // Read from the InputStream.
+                        numBytes = mmInStream.read(mmBuffer);
+                        // Send the obtained bytes to the UI activity.
+                        mHandler.obtainMessage(MESSAGE_READ, numBytes, -1, mmBuffer)
+                                .sendToTarget();
+                    } else SystemClock.sleep(200);
                 } catch (IOException e) {
                     Log.d(TAG, "Input stream was disconnected", e);
                     break;
@@ -320,15 +306,38 @@ public class MainActivity extends Activity {
             }
         }
 
-        /* Call this from the main activity to send data to the remote device */
+        // Call this from the main activity to send data to the remote device.
         public void write(String message) {
-            Log.d(TAG, "...Data to send: " + message + "...");
-            byte[] msgBuffer = message.getBytes();
             try {
-                mmOutStream.write(msgBuffer);
+                byte[] bytes = message.getBytes();
+                mmOutStream.write(bytes);
+                    // Share the sent message with the UI activity.
+//                    mHandler.obtainMessage(MESSAGE_WRITE, -1, -1, mmBuffer)
+//                            .sendToTarget();
             } catch (IOException e) {
-                Log.d(TAG, "...Error data send: " + e.getMessage() + "...");
+                Log.e(TAG, "Error occurred when sending data", e);
             }
         }
+
+        // Call this method from the main activity to shut down the connection.
+        public void cancel() {
+            try {
+                mmSocket.close();
+            } catch (IOException e) {
+                Log.e(TAG, "Could not close the connect socket", e);
+            }
+        }
+
+
+        /* Call this from the main activity to send data to the remote device */
+//        public void write(String message) {
+//            Log.d(TAG, "...Data to send: " + message + "...");
+//            byte[] msgBuffer = message.getBytes();
+//            try {
+//                mmOutStream.write(msgBuffer);
+//            } catch (IOException e) {
+//                Log.d(TAG, "...Error data send: " + e.getMessage() + "...");
+//            }
+//        }
     }
 }
