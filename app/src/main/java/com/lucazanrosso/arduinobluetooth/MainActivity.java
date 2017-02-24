@@ -89,6 +89,7 @@ import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -142,8 +143,10 @@ public class MainActivity extends Activity {
                             btnOff.setEnabled(true);
                             btnOn.setEnabled(true);
                         }
-                        //Log.d(TAG, "...String:"+ sb.toString() +  "Byte:" + msg.arg1 + "...");
+                        Log.d(TAG, "...String:"+ sb.toString() +  "Byte:" + msg.arg1 + "...");
+                        Toast.makeText(getApplicationContext(), strIncom, Toast.LENGTH_SHORT).show();
                         break;
+
                 }
             }
         };
@@ -153,7 +156,7 @@ public class MainActivity extends Activity {
 
         btnOn.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
-                btnOn.setEnabled(false);
+//                btnOn.setEnabled(false);
                 mConnectedThread.write("1");    // Send "1" via Bluetooth
                 //Toast.makeText(getBaseContext(), "Turn on LED", Toast.LENGTH_SHORT).show();
             }
@@ -161,7 +164,7 @@ public class MainActivity extends Activity {
 
         btnOff.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
-                btnOff.setEnabled(false);
+//                btnOff.setEnabled(false);
                 mConnectedThread.write("0");    // Send "0" via Bluetooth
                 //Toast.makeText(getBaseContext(), "Turn off LED", Toast.LENGTH_SHORT).show();
             }
@@ -277,17 +280,41 @@ public class MainActivity extends Activity {
             mmOutStream = tmpOut;
         }
 
-        public void run() {
-            byte[] buffer = new byte[256];  // buffer store for the stream
-            int bytes; // bytes returned from read()
+//        public void run() {
+//            byte[] buffer = new byte[256];  // buffer store for the stream
+//            int bytes; // bytes returned from read()
+//
+//            // Keep listening to the InputStream until an exception occurs
+//            while (true) {
+//                try {
+//                    // Read from the InputStream
+//                    bytes = mmInStream.read(buffer);        // Get number of bytes and message in "buffer"
+//                    int c = bytes;
+//                    Log.d(TAG, ":" + c);
+//                    h.obtainMessage(RECIEVE_MESSAGE, bytes, -1, buffer).sendToTarget();     // Send to message queue Handler
+//                } catch (IOException e) {
+//                    break;
+//                }
+//            }
+//        }
 
-            // Keep listening to the InputStream until an exception occurs
+        public void run() {
+            byte[] mmBuffer = new byte[1024];
+            int numBytes; // bytes returned from read()
+
+            // Keep listening to the InputStream until an exception occurs.
             while (true) {
                 try {
-                    // Read from the InputStream
-                    bytes = mmInStream.read(buffer);        // Get number of bytes and message in "buffer"
-                    h.obtainMessage(RECIEVE_MESSAGE, bytes, -1, buffer).sendToTarget();     // Send to message queue Handler
+                    // Read from the InputStream.
+                    numBytes = mmInStream.read(mmBuffer);
+                    // Send the obtained bytes to the UI activity.
+                    Log.d(TAG, ":" + numBytes);
+                    Message readMsg = h.obtainMessage(
+                            RECIEVE_MESSAGE, numBytes, -1,
+                            mmBuffer);
+                    readMsg.sendToTarget();
                 } catch (IOException e) {
+                    Log.d(TAG, "Input stream was disconnected", e);
                     break;
                 }
             }
